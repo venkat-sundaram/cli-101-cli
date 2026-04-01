@@ -1,7 +1,6 @@
 const express = require('express');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const PORT = 3000;
@@ -27,7 +26,9 @@ function getCommits(repoPath, since, until) {
     );
     if (!output.trim()) return [];
     return output.trim().split('\n').map(line => {
-      const [message, author] = line.split('\t');
+      const tabIdx = line.indexOf('\t');
+      const message = tabIdx !== -1 ? line.slice(0, tabIdx) : line;
+      const author = tabIdx !== -1 ? line.slice(tabIdx + 1) : '';
       return { message, author };
     });
   } catch (error) {
@@ -53,9 +54,10 @@ app.post('/api/standup', (req, res) => {
     return res.status(400).json({ error: 'Path does not exist or cannot be accessed' });
   }
 
-  // Check if it's a git repository
-  const gitDir = path.join(resolvedPath, '.git');
-  if (!fs.existsSync(gitDir)) {
+  // Check if it's a git repository (handles normal repos, worktrees, and bare repos)
+  try {
+    execFileSync('git', ['-C', resolvedPath, 'rev-parse', '--git-dir'], { encoding: 'utf-8', timeout: 5000 });
+  } catch {
     return res.status(400).json({ error: 'Not a git repository' });
   }
 
